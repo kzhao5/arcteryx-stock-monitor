@@ -59,12 +59,32 @@ jobs:
         # 0 in stock, 1 out of stock: both are successful checks, so the
         # step must not die on exit 1 the way `bash -e` would. Exit 2
         # (detection broke) is left to fail the run on purpose.
+        id: check
         run: |
           set +e
-          python check_stock.py --screenshot shot.png
-          code=$?
+          python check_stock.py --screenshot shot.png | tee run.log
+          code=${PIPESTATUS[0]}
           set -e
+          case "$code" in
+            0) verdict="IN STOCK" ;;
+            1) verdict="out of stock" ;;
+            *) verdict="UNDETERMINED - detection needs attention" ;;
+          esac
+          echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
           if [ "$code" -le 1 ]; then exit 0; else exit "$code"; fi
+
+      - name: Report the verdict
+        if: always()
+        run: |
+          echo "## 00S (Sea Salt): ${{ steps.check.outputs.verdict }}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo ''
+            echo '```'
+            grep -E '00S ->|emailed|notified|page colour' run.log || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "=== VERDICT: ${{ steps.check.outputs.verdict }} ==="
+          grep -E '00S ->|emailed|notified' run.log || true
 
       - name: Save stock state
         if: always()

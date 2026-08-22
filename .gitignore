@@ -3,3 +3,4 @@ stock_state.json
 *.png
 *.log
 dump/
+run.log
