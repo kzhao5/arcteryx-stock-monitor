@@ -37,7 +37,8 @@ IN_STOCK_CTA = re.compile(r"add to (cart|bag)|添加到购物车|加入购物车
 OOS_CTA = re.compile(r"notify me|out of stock|sold out|waitlist|back in stock|缺货|售罄|到货通知", re.I)
 
 # Attributes / classes that mark a size chip as unbuyable.
-OOS_CLASS = re.compile(r"disabl|unavail|sold[-_ ]?out|out[-_ ]?of[-_ ]?stock|\boos\b|strike", re.I)
+OOS_CLASS = re.compile(
+    r"no-{1,2}stock|disabl|unavail|sold[-_ ]?out|out[-_ ]?of[-_ ]?stock|\boos\b|strike", re.I)
 
 LENGTH_WORDS = {"S": "Short", "R": "Regular", "T": "Tall"}
 
@@ -249,30 +250,39 @@ def is_selected(el) -> bool:
 
 def read_cta(page) -> tuple[str | None, str]:
     """Look at the buy button. Returns (state, text) with state in/out/None."""
-    texts: list[str] = []
+    # "Add to cart" is checked first: the page can carry a dormant "notify me"
+    # elsewhere in the DOM.
+    for state, pattern in (("in", IN_STOCK_CTA), ("out", OOS_CTA)):
+        try:
+            btn = page.get_by_role("button", name=pattern)
+            for i in range(min(btn.count(), 8)):
+                el = btn.nth(i)
+                try:
+                    if el.is_visible():
+                        return state, (el.inner_text() or "").strip()[:80]
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    # Nothing matched: report what was on screen, skipping the site chrome so
+    # the log shows the product area rather than the nav bar.
+    seen: list[str] = []
     try:
-        buttons = page.locator("button, a[role='button'], input[type='submit']")
-        for i in range(min(buttons.count(), 60)):
-            el = buttons.nth(i)
+        buttons = page.locator("main button, [role='main'] button, form button")
+        for i in range(min(buttons.count(), 40)):
             try:
+                el = buttons.nth(i)
                 if not el.is_visible():
                     continue
-                txt = (el.inner_text() or el.get_attribute("value") or "").strip()
+                txt = (el.inner_text() or "").strip()
             except Exception:
                 continue
-            if txt:
-                texts.append(txt)
+            if txt and txt not in seen:
+                seen.append(txt)
     except Exception:
         pass
-    blob = " | ".join(texts)
-    # "Add to cart" wins: a page can carry a dormant "notify me" in the DOM.
-    for txt in texts:
-        if IN_STOCK_CTA.search(txt):
-            return "in", txt
-    for txt in texts:
-        if OOS_CTA.search(txt):
-            return "out", txt
-    return None, blob[:400]
+    return None, " | ".join(seen)[:400]
 
 
 def select_size(page, size: str, length: str | None) -> tuple[object | None, str]:
