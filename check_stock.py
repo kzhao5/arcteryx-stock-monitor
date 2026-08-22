@@ -45,6 +45,14 @@ LENGTH_WORDS = {"S": "Short", "R": "Regular", "T": "Tall"}
 CLICKABLE = "button, a, li, label, [role='radio'], [role='option'], [role='button']"
 
 
+def redact(addr: str) -> str:
+    """k***@gmail.com -- enough to tell addresses apart, not enough to harvest."""
+    local, _, domain = addr.partition("@")
+    if not domain:
+        return "***"
+    return f"{local[:1]}***@{domain}"
+
+
 def log(msg: str) -> None:
     stamp = datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{stamp}] {msg}", flush=True)
@@ -534,11 +542,12 @@ def notify(title: str, body: str, url: str) -> None:
                     # them explicitly so a malformed header cannot drop one.
                     refused = srv.send_message(msg, to_addrs=recipients)
                 if refused:
-                    log(f"email refused for: {', '.join(refused)}")
+                    log(f"email refused for: {', '.join(redact(a) for a in refused)}")
                 delivered = [a for a in recipients if a not in (refused or {})]
                 if delivered:
                     sent.append(f"email->{len(delivered)}")
-                    log(f"emailed: {', '.join(delivered)}")
+                    log(f"emailed {len(delivered)} recipient(s): "
+                        f"{', '.join(redact(a) for a in delivered)}")
             except Exception as exc:
                 log(f"email failed: {exc.__class__.__name__}: {exc}")
 
@@ -562,7 +571,16 @@ def main() -> int:
     p.add_argument("--executable", default=os.environ.get("CHROMIUM_PATH"),
                    help="path to a chromium binary, if the bundled one is missing")
     p.add_argument("--discover", metavar="DIR", default=None, help="dump XHR JSON to DIR and exit")
+    p.add_argument("--test-notify", action="store_true",
+                   help="send a test notification through every configured channel and exit")
     args = p.parse_args()
+
+    if args.test_notify:
+        notify(f"[测试] Arc'teryx 监控通知测试",
+               f"这是一封测试邮件，用来确认通知渠道正常。"
+               f"监控目标：{args.size}。真正补货时你会收到一封标题不含[测试]的邮件。",
+               args.url)
+        return 0
 
     try:
         from playwright.sync_api import sync_playwright

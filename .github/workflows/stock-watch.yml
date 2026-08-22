@@ -5,12 +5,29 @@ name: Arc'teryx stock watch
 # entirely after 60 days with no commits to the repository.
 on:
   workflow_dispatch:
+    inputs:
+      test_email:
+        description: "Also send a test notification, to confirm the channels work"
+        type: boolean
+        default: false
   schedule:
     - cron: "*/15 * * * *"
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    env:
+      BARK_URL: ${{ secrets.BARK_URL }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+      WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      SMTP_TO: ${{ secrets.SMTP_TO }}
+      SMTP_FROM: ${{ secrets.SMTP_FROM }}
     steps:
       - uses: actions/checkout@v4
 
@@ -41,19 +58,11 @@ jobs:
           pip install -r requirements.txt
           playwright install --with-deps chromium
 
+      - name: Send a test notification
+        if: ${{ inputs.test_email }}
+        run: python check_stock.py --test-notify
+
       - name: Check stock
-        env:
-          BARK_URL: ${{ secrets.BARK_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
-          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USER: ${{ secrets.SMTP_USER }}
-          SMTP_PASS: ${{ secrets.SMTP_PASS }}
-          SMTP_TO: ${{ secrets.SMTP_TO }}
-          SMTP_FROM: ${{ secrets.SMTP_FROM }}
         # Each run starts from a clean checkout, so there is no previous state
         # to compare against -- notify on every in-stock result.
         # 0 in stock, 1 out of stock: both are successful checks, so the

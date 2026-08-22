@@ -156,6 +156,14 @@ Settings → Secrets and variables → Actions 里加通知用的 secret。
 
 没配 secret 也能跑，只是结果只出现在 Actions 日志里，不会推到你手机。
 
+配好之后想确认通路是否真的通，不用等补货：在 Actions 页面点
+`Run workflow`，把 **Also send a test notification** 勾上，会立刻发一封
+标题带 `[测试]` 的邮件。命令行对应 `python check_stock.py --test-notify`。
+
+日志里只会出现 `k***@gmail.com` 这种脱敏形式。GitHub 只遮蔽和 secret
+完全一致的字符串，`SMTP_TO` 拆分后的单个地址不会被自动遮蔽，所以脚本
+自己做了脱敏——否则收件人地址会明文出现在公开仓库的日志里。
+
 ### 学校 / 实验室服务器
 
 技术上能跑，但通常不合适，`preflight.sh` 会告诉你卡在哪一条：
