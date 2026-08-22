@@ -2,11 +2,11 @@ name: Arc'teryx stock watch
 
 # */5 is the shortest interval GitHub accepts, but it is a REQUEST, not a
 # guarantee, and the gap between what is asked for and what arrives is large.
-# Measured on this repository: one scheduled run in the first fifty minutes.
-# GitHub delays and silently drops scheduled runs under load, and dense
-# schedules are dropped the most, so expect something closer to every 15-60
-# minutes, unevenly. Asking for */5 costs nothing, so it stays -- just do not
-# read it as a promise. A fast restock can be missed entirely between runs.
+# Measured here over 107 minutes: 5 runs, gaps of 35, 20, 26 and 20 minutes,
+# so about every 25 minutes rather than every 5. GitHub delays and silently
+# drops scheduled runs under load, dropping dense schedules the most. Asking
+# for */5 costs nothing, so it stays -- just do not read it as a promise.
+# A restock that sells out within a quarter hour can still be missed.
 #
 # The only way to get a true five minute cadence is a long-running job that
 # loops internally (check_stock.py --interval 300), which occupies a runner
