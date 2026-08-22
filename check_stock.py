@@ -489,26 +489,48 @@ def notify(title: str, body: str, url: str) -> None:
 
     host, to = os.environ.get("SMTP_HOST"), os.environ.get("SMTP_TO")
     if host and to:
-        try:
-            msg = EmailMessage()
-            msg["Subject"] = title
-            msg["From"] = os.environ.get("SMTP_FROM") or os.environ.get("SMTP_USER", to)
-            msg["To"] = to
-            msg.set_content(f"{body}\n\n{url}\n")
-            port = int(os.environ.get("SMTP_PORT", "465"))
-            if port == 465:
-                srv = smtplib.SMTP_SSL(host, port, timeout=25)
-            else:
-                srv = smtplib.SMTP(host, port, timeout=25)
-                srv.starttls()
-            with srv:
+        # SMTP_TO may list several addresses, separated by comma or semicolon.
+        recipients = [a.strip() for a in re.split(r"[,;]", to) if a.strip()]
+        if not recipients:
+            log("SMTP_TO is set but contains no usable address")
+        else:
+            try:
+                msg = EmailMessage()
+                msg["Subject"] = title
+                msg["From"] = (os.environ.get("SMTP_FROM")
+                               or os.environ.get("SMTP_USER") or recipients[0])
+                msg["To"] = ", ".join(recipients)
+                msg.set_content(f"{body}\n\n{url}\n")
+                port = int(os.environ.get("SMTP_PORT", "465"))
                 user, pw = os.environ.get("SMTP_USER"), os.environ.get("SMTP_PASS")
-                if user and pw:
-                    srv.login(user, pw)
-                srv.send_message(msg)
-            sent.append("email")
-        except Exception as exc:
-            log(f"email failed: {exc}")
+                if port == 465:
+                    srv = smtplib.SMTP_SSL(host, port, timeout=25)
+                else:
+                    srv = smtplib.SMTP(host, port, timeout=25)
+                    srv.ehlo()
+                    if srv.has_extn("starttls"):
+                        srv.starttls()
+                        srv.ehlo()
+                    elif user and pw:
+                        # Never hand the password to an unencrypted connection.
+                        srv.quit()
+                        raise RuntimeError(
+                            f"{host}:{port} offers no STARTTLS; refusing to send credentials "
+                            "in the clear. Use port 465, or 587 on a server that supports TLS.")
+                with srv:
+                    if user and pw:
+                        srv.login(user, pw)
+                    # send_message would derive recipients from the header; pass
+                    # them explicitly so a malformed header cannot drop one.
+                    refused = srv.send_message(msg, to_addrs=recipients)
+                if refused:
+                    log(f"email refused for: {', '.join(refused)}")
+                delivered = [a for a in recipients if a not in (refused or {})]
+                if delivered:
+                    sent.append(f"email->{len(delivered)}")
+                    log(f"emailed: {', '.join(delivered)}")
+            except Exception as exc:
+                log(f"email failed: {exc.__class__.__name__}: {exc}")
 
     log(f"notified via: {', '.join(sent) if sent else 'nothing configured (set BARK_URL / TELEGRAM_* / SERVERCHAN_KEY / WEBHOOK_URL / SMTP_*)'}")
 

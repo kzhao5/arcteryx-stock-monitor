@@ -26,6 +26,16 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
 
+      # Without this every run starts blank and would re-alert while the
+      # size stays in stock. Cache keys are immutable, so write a fresh one
+      # each run and restore the most recent by prefix.
+      - name: Restore previous stock state
+        uses: actions/cache/restore@v4
+        with:
+          path: stock_state.json
+          key: stock-state-${{ github.run_id }}
+          restore-keys: stock-state-
+
       - name: Install dependencies
         run: |
           pip install -r requirements.txt
@@ -43,16 +53,25 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           SMTP_TO: ${{ secrets.SMTP_TO }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
         # Each run starts from a clean checkout, so there is no previous state
         # to compare against -- notify on every in-stock result.
         # 0 in stock, 1 out of stock: both are successful checks, so the
-        # step must not die on exit 1 the way `bash -e` would.
+        # step must not die on exit 1 the way `bash -e` would. Exit 2
+        # (detection broke) is left to fail the run on purpose.
         run: |
           set +e
-          python check_stock.py --notify-always --screenshot shot.png
+          python check_stock.py --screenshot shot.png
           code=$?
           set -e
           if [ "$code" -le 1 ]; then exit 0; else exit "$code"; fi
+
+      - name: Save stock state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: stock_state.json
+          key: stock-state-${{ github.run_id }}
 
       - name: Upload screenshot
         if: always()

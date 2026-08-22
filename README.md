@@ -66,6 +66,9 @@ python3 check_stock.py --interval 600
 状态存在 `stock_state.json`，只有**从无货变有货**时才推送，不会反复轰炸。
 想每次有货都推，加 `--notify-always`。
 
+GitHub Actions 上这个状态文件通过 Actions 缓存在多次运行之间传递，所以补货时
+你只会收到一封邮件，而不是每 15 分钟一封。
+
 ## 通知渠道
 
 配了哪个就发哪个，可以同时配多个，都通过环境变量：
@@ -76,9 +79,34 @@ python3 check_stock.py --interval 600
 | Telegram | `TELEGRAM_BOT_TOKEN`、`TELEGRAM_CHAT_ID` |
 | Server 酱 | `SERVERCHAN_KEY` |
 | 任意 webhook | `WEBHOOK_URL`（POST JSON） |
-| 邮件 | `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS`、`SMTP_TO` |
+| 邮件 | `SMTP_HOST`、`SMTP_PORT`、`SMTP_USER`、`SMTP_PASS`、`SMTP_TO`、`SMTP_FROM` |
 
 一个都没配也能跑，只是把结果打在终端里。
+
+### 用 Gmail 发邮件
+
+`SMTP_TO` 支持多个收件人，用逗号或分号隔开，一封信同时发给所有人。
+
+Gmail 不接受账号密码，必须用**应用专用密码**：
+
+1. 发件的那个 Google 账号先开启两步验证
+2. 到 https://myaccount.google.com/apppasswords 生成一个应用专用密码（16 位）
+3. 按下面填 Secrets：
+
+| Secret | 值 |
+| --- | --- |
+| `SMTP_HOST` | `smtp.gmail.com` |
+| `SMTP_PORT` | `465` |
+| `SMTP_USER` | 发件的 Gmail 地址 |
+| `SMTP_PASS` | 上一步生成的 16 位应用专用密码（**不是**登录密码） |
+| `SMTP_TO` | 收件人，多个用逗号隔开 |
+| `SMTP_FROM` | 可留空，默认等于 `SMTP_USER` |
+
+**收件人地址也放 Secrets，不要写进代码**——仓库是公开的，邮箱写进源码会被
+爬虫抓去发垃圾邮件。
+
+端口用 465（SSL）或 587（STARTTLS）都行。如果服务器不支持加密而你又配了密码，
+脚本会**拒绝发送**并报错，不会把密码明文送出去。
 
 ## 定时
 
