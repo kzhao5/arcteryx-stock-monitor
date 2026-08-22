@@ -1,0 +1,63 @@
+name: Arc'teryx stock watch
+
+# Public repo, so Actions minutes are free: a 15 minute cadence is fine.
+# GitHub may delay scheduled runs under load, and disables the schedule
+# entirely after 60 days with no commits to the repository.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "*/15 * * * *"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Caching the browser turns a ~2min install into a few seconds, so a
+      # restock is noticed sooner.
+      - name: Cache chromium
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Check stock
+        env:
+          BARK_URL: ${{ secrets.BARK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SERVERCHAN_KEY: ${{ secrets.SERVERCHAN_KEY }}
+          WEBHOOK_URL: ${{ secrets.WEBHOOK_URL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+        # Each run starts from a clean checkout, so there is no previous state
+        # to compare against -- notify on every in-stock result.
+        # 0 in stock, 1 out of stock: both are successful checks, so the
+        # step must not die on exit 1 the way `bash -e` would.
+        run: |
+          set +e
+          python check_stock.py --notify-always --screenshot shot.png
+          code=$?
+          set -e
+          if [ "$code" -le 1 ]; then exit 0; else exit "$code"; fi
+
+      - name: Upload screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdp-screenshot
+          path: shot.png
+          if-no-files-found: ignore

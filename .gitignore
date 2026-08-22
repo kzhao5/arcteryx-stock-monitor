@@ -1,0 +1,5 @@
+.venv/
+stock_state.json
+*.png
+*.log
+dump/
