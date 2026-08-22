@@ -74,7 +74,7 @@ python3 check_stock.py --interval 600
 想每次有货都推，加 `--notify-always`。
 
 GitHub Actions 上这个状态文件通过 Actions 缓存在多次运行之间传递，所以补货时
-你只会收到一封邮件，而不是每 15 分钟一封。
+你只会收到一封邮件，而不是每 5 分钟一封。
 
 ## 通知渠道
 
@@ -150,7 +150,7 @@ bash preflight.sh
 2. **仓库 60 天没有任何提交，GitHub 会自动停掉 schedule。** 到时候随便推一个
    提交就能恢复。
 
-定时已经开好了（每 15 分钟）。你只需要到
+定时已经开好了（每 5 分钟，这是 GitHub 允许的最小间隔）。你只需要到
 Settings → Secrets and variables → Actions 里加通知用的 secret。
 仓库是公开的，**不要**把 Bark key 之类直接写进 yml，一定走 secrets。
 
@@ -203,6 +203,8 @@ python3 check_stock.py --discover dump/
 
 ## 注意
 
-- 别把间隔调得太短。5–15 分钟足够了，一分钟一次只会更快被风控。
+- 现在是 5 分钟一次，已经是 GitHub 定时任务的下限，再快只能自己挂机器。
+  GitHub 在负载高时会延迟甚至跳过定时运行，间隔越密越明显，所以实际节奏是
+  「大约五分钟」而不是精确五分钟。
 - 脚本只读页面，不会加购、不会下单。
 - 补货高峰期热门尺码可能几分钟就没，通知到了要手动尽快去下单。

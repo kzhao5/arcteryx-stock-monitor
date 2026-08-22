@@ -1,8 +1,9 @@
 name: Arc'teryx stock watch
 
-# Public repo, so Actions minutes are free: a 15 minute cadence is fine.
-# GitHub may delay scheduled runs under load, and disables the schedule
-# entirely after 60 days with no commits to the repository.
+# Public repo, so Actions minutes are free. Five minutes is the shortest
+# interval GitHub accepts; it also delays or drops scheduled runs under load,
+# more noticeably the tighter the schedule, so treat this as "about every five
+# minutes". The schedule is disabled entirely after 60 days with no commits.
 on:
   workflow_dispatch:
     inputs:
@@ -16,7 +17,7 @@ on:
         default: ""
 
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "*/5 * * * *"
 
 jobs:
   check:
