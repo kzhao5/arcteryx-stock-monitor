@@ -460,8 +460,8 @@ def _post(url: str, data: bytes | None = None, headers: dict | None = None) -> N
         r.read()
 
 
-def notify(title: str, body: str, url: str) -> None:
-    """Fire every notifier that has credentials in the environment."""
+def notify(title: str, body: str, url: str) -> list[str]:
+    """Fire every notifier that has credentials. Returns the ones that worked."""
     sent = []
 
     bark = os.environ.get("BARK_URL")
@@ -552,6 +552,7 @@ def notify(title: str, body: str, url: str) -> None:
                 log(f"email failed: {exc.__class__.__name__}: {exc}")
 
     log(f"notified via: {', '.join(sent) if sent else 'nothing configured (set BARK_URL / TELEGRAM_* / SERVERCHAN_KEY / WEBHOOK_URL / SMTP_*)'}")
+    return sent
 
 
 # --------------------------------------------------------------------------
@@ -576,10 +577,15 @@ def main() -> int:
     args = p.parse_args()
 
     if args.test_notify:
-        notify(f"[测试] Arc'teryx 监控通知测试",
-               f"这是一封测试邮件，用来确认通知渠道正常。"
-               f"监控目标：{args.size}。真正补货时你会收到一封标题不含[测试]的邮件。",
-               args.url)
+        sent = notify("[测试] Arc'teryx 监控通知测试",
+                      f"这是一封测试邮件，用来确认通知渠道正常。"
+                      f"监控目标：{args.size}。真正补货时你会收到一封标题不含[测试]的邮件。",
+                      args.url)
+        if not sent:
+            log("TEST FAILED: no notification channel succeeded. "
+                "Check the secrets and the errors above.")
+            return 1
+        log(f"TEST PASSED: delivered through {', '.join(sent)}")
         return 0
 
     try:
