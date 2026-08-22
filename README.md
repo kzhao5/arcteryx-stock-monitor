@@ -160,6 +160,11 @@ Settings → Secrets and variables → Actions 里加通知用的 secret。
 `Run workflow`，把 **Also send a test notification** 勾上，会立刻发一封
 标题带 `[测试]` 的邮件。命令行对应 `python check_stock.py --test-notify`。
 
+想更进一步，确认"真有货时会不会发信"这条完整链路，在 **Also check this
+size for real** 里填一个当前**确实有货**的尺码（比如 `4R`）。它会真的去查那个
+尺码、真的走有货分支、真的发一封信给你。用的是独立的状态文件，不会干扰
+00S 的正常监控。
+
 日志里只会出现 `k***@gmail.com` 这种脱敏形式。GitHub 只遮蔽和 secret
 完全一致的字符串，`SMTP_TO` 拆分后的单个地址不会被自动遮蔽，所以脚本
 自己做了脱敏——否则收件人地址会明文出现在公开仓库的日志里。

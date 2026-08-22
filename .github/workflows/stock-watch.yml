@@ -10,6 +10,11 @@ on:
         description: "Also send a test notification, to confirm the channels work"
         type: boolean
         default: false
+      rehearse_size:
+        description: "Also check this size for real and alert on it, e.g. 4R -- a full dress rehearsal"
+        type: string
+        default: ""
+
   schedule:
     - cron: "*/15 * * * *"
 
@@ -61,6 +66,12 @@ jobs:
       - name: Send a test notification
         if: ${{ inputs.test_email }}
         run: python check_stock.py --test-notify
+
+      - name: Rehearse an in-stock alert
+        if: ${{ inputs.rehearse_size != '' }}
+        run: |
+          python check_stock.py --size "${{ inputs.rehearse_size }}" \
+            --notify-always --state-file rehearsal_state.json
 
       - name: Check stock
         # Each run starts from a clean checkout, so there is no previous state
