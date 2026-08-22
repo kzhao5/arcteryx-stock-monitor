@@ -104,9 +104,77 @@ def find_option(page, label: str):
     return None
 
 
+def describe(el) -> str:
+    """Compact description of a matched node, for the log."""
+    try:
+        info = el.evaluate("""e => ({
+            tag: e.tagName.toLowerCase(),
+            cls: (e.getAttribute('class') || '').slice(0, 120),
+            dis: e.hasAttribute('disabled') || e.getAttribute('aria-disabled'),
+            parent: e.parentElement ? e.parentElement.tagName.toLowerCase() : null,
+            html: e.outerHTML.slice(0, 240),
+        })""")
+        return (f"<{info['tag']} parent={info['parent']} disabled={info['dis']} "
+                f"class={info['cls']!r}> {info['html']!r}")
+    except Exception as exc:
+        return f"(could not describe: {exc.__class__.__name__})"
+
+
+def dump_size_candidates(page, size: str) -> None:
+    """Log every node whose text looks like a size, with its state."""
+    try:
+        rows = page.evaluate("""() => {
+            const out = [];
+            document.querySelectorAll("button, a, li, label, option, [role='radio'], [role='option']")
+              .forEach(e => {
+                const t = (e.textContent || '').replace(/\s+/g, '');
+                if (!t || t.length > 6) return;
+                if (!/^[0-9]{1,2}[SRT]?$|^X{0,3}[SML][SRT]?$/i.test(t)) return;
+                const cs = getComputedStyle(e);
+                const inp = e.querySelector('input') ||
+                            (e.tagName === 'INPUT' ? e : null);
+                out.push({t, tag: e.tagName.toLowerCase(),
+                          dis: e.hasAttribute('disabled') || e.getAttribute('aria-disabled') || false,
+                          inp: inp ? inp.disabled : null,
+                          pe: cs.pointerEvents,
+                          deco: cs.textDecorationLine,
+                          cls: (e.getAttribute('class') || '').slice(0, 60)});
+              });
+            return out.slice(0, 40);
+        }""")
+        if rows:
+            log(f"size-like nodes on page ({len(rows)}):")
+            for r in rows:
+                mark = " <== target" if r["t"].lower() == size.lower() else ""
+                log(f"    {r['t']:>5}  <{r['tag']}> disabled={r['dis']} input={r['inp']} "
+                    f"pointer={r['pe']} deco={r['deco']} class={r['cls']!r}{mark}")
+        else:
+            log("no size-like nodes found at all -- the selector may render late")
+    except Exception as exc:
+        log(f"could not enumerate sizes: {exc.__class__.__name__}: {exc}")
+
+
 def option_is_disabled(el) -> bool:
     try:
         if el.is_disabled():
+            return True
+    except Exception:
+        pass
+    try:
+        blocked = el.evaluate("""e => {
+            const cs = getComputedStyle(e);
+            if (cs.pointerEvents === 'none') return true;
+            if ((cs.textDecorationLine || '').includes('line-through')) return true;
+            const inp = e.querySelector('input') || (e.tagName === 'INPUT' ? e : null);
+            if (inp && inp.disabled) return true;
+            const lbl = e.closest('label');
+            if (lbl) {
+                const own = lbl.control || lbl.querySelector('input');
+                if (own && own.disabled) return true;
+            }
+            return false;
+        }""")
+        if blocked:
             return True
     except Exception:
         pass
@@ -125,6 +193,58 @@ def option_is_disabled(el) -> bool:
         if OOS_CLASS.search(val):
             return True
     return False
+
+
+def click_option(page, el, label: str) -> bool:
+    """Select a size chip. Returns False if every strategy failed."""
+    # A native <option> can be located by text but never clicked -- it has to
+    # go through its owning <select>.
+    try:
+        tag = el.evaluate("e => e.tagName.toLowerCase()")
+    except Exception:
+        tag = ""
+    if tag == "option":
+        try:
+            sel = el.locator("xpath=ancestor::select[1]")
+            sel.select_option(label=label, timeout=8000)
+            log("selected via native <select>")
+            return True
+        except Exception as exc:
+            log(f"native select failed: {exc.__class__.__name__}")
+            return False
+
+    for strategy in ("plain", "scrolled", "forced"):
+        try:
+            if strategy == "scrolled":
+                el.scroll_into_view_if_needed(timeout=4000)
+                page.wait_for_timeout(300)
+            el.click(timeout=6000, force=(strategy == "forced"))
+            if strategy != "plain":
+                log(f"selected via {strategy} click")
+            return True
+        except Exception as exc:
+            log(f"{strategy} click failed: {exc.__class__.__name__}")
+    return False
+
+
+def is_selected(el) -> bool:
+    try:
+        return bool(el.evaluate("""e => {
+            if (e.getAttribute('aria-checked') === 'true') return true;
+            if (e.getAttribute('aria-pressed') === 'true') return true;
+            if (e.getAttribute('aria-selected') === 'true') return true;
+            if (/select|active|checked|current/i.test(e.getAttribute('class') || '')) return true;
+            const inp = e.querySelector('input') || (e.tagName === 'INPUT' ? e : null);
+            if (inp && inp.checked) return true;
+            const lbl = e.closest('label');
+            if (lbl) {
+                const own = lbl.control || lbl.querySelector('input');
+                if (own && own.checked) return true;
+            }
+            return false;
+        }"""))
+    except Exception:
+        return False
 
 
 def read_cta(page) -> tuple[str | None, str]:
@@ -217,33 +337,49 @@ def check(page, url: str, size: str, length: str | None, shot: Path | None) -> t
 
     el, note = select_size(page, size, length)
     if el is None:
+        dump_size_candidates(page, size)
         if shot:
             page.screenshot(path=str(shot), full_page=True)
         return "unknown", note
 
     if option_is_disabled(el):
-        detail = f"{note}; size chip is marked unavailable"
+        detail = f"{note}; size chip is marked unavailable (crossed out)"
         if shot:
             page.screenshot(path=str(shot), full_page=True)
         return "out", detail
 
-    try:
-        el.click(timeout=8000)
-    except Exception as exc:  # an unclickable chip is itself a strong OOS signal
-        return "out", f"{note}; chip not clickable ({exc.__class__.__name__})"
+    log(f"matched node: {describe(el)}")
+
+    # A sold-out size is drawn crossed out and cannot be selected. That chip
+    # state is the real signal; the buy button is NOT, because this page keeps
+    # "Add to cart" enabled even with no size chosen.
+    if not click_option(page, el, size):
+        dump_size_candidates(page, size)
+        if shot:
+            page.screenshot(path=str(shot), full_page=True)
+        return "out", f"{note}; chip cannot be selected (crossed out)"
     page.wait_for_timeout(1500)
 
     if option_is_disabled(el):
         return "out", f"{note}; chip disabled after selection"
 
+    if not is_selected(el):
+        # The click landed but nothing got selected, so any CTA reading below
+        # would be about the page's default state, not about this size.
+        dump_size_candidates(page, size)
+        if shot:
+            page.screenshot(path=str(shot), full_page=True)
+        return "unknown", f"{note}; click did not select the size"
+
     state, cta = read_cta(page)
     if shot:
         page.screenshot(path=str(shot), full_page=True)
     if state == "in":
-        return "in", f"{note}; CTA says {cta!r}"
+        return "in", f"{note}; selected, CTA says {cta!r}"
     if state == "out":
-        return "out", f"{note}; CTA says {cta!r}"
-    return "unknown", f"{note}; no recognisable CTA. Buttons seen: {cta}"
+        return "out", f"{note}; selected, CTA says {cta!r}"
+    dump_size_candidates(page, size)
+    return "unknown", f"{note}; selected but no recognisable CTA. Buttons seen: {cta}"
 
 
 # --------------------------------------------------------------------------

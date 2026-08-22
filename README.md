@@ -7,6 +7,19 @@
 Arc'teryx 的商品页是前端渲染的，库存接口没有公开文档，所以脚本用无头浏览器
 把尺码选择器真正点一遍，读它的状态——网站改版时这种方式比猜 API 稳。
 
+## 判断依据
+
+页面上售罄的尺码会被**画叉**，可买的是正常方块。判断以这个状态为准：
+
+1. 找到 `00S` 那一块（页面上是单个方块，"00" 和 "S" 上下两行）
+2. 它如果是 disabled / pointer-events:none / 内部 input 被禁用 → **无货**
+3. 能点就点，并且**确认它真的变成选中态**
+4. 选中之后再读购买按钮：`Add to cart` → 有货，`Notify Me` → 无货
+
+第 3 步不能省。这个页面**没选任何尺码时 "Add to cart" 也是可点的黑色按钮**，
+所以只看按钮文字会把"点击没生效"误判成有货。点了没选中就报 `UNKNOWN`，
+宁可不报也不误报。
+
 ## 安装
 
 ```bash
@@ -15,21 +28,20 @@ pip install -r requirements.txt
 playwright install chromium
 ```
 
-## 第一次先校准
+## 校准
 
-我写脚本时无法访问 arcteryx.com（容器出网被拦），尺码控件的**具体形态没有实测过**。
-第一次务必带上截图跑一次，确认它点对了地方：
+尺码控件的形态已经对着真实页面确认过了：单个 `00S` 方块，不是「尺码 + 长度」
+两个控件，所以默认参数就能用。
+
+网站改版后如果结果变成 `UNKNOWN`，带截图跑一次看发生了什么：
 
 ```bash
 python3 check_stock.py --headful --screenshot shot.png
 ```
 
-看日志里的 `selected ...`：
-
-- `selected Short+00` —— 说明页面是「尺码 00」+「长度 Short」两个控件，正确。
-- `selected size=00S` —— 说明页面直接有 `00S` 这个选项，也正确。
-- `size '00S' not found on page` —— 尺码标签跟猜的不一样。打开 `shot.png`
-  看真实写法，然后显式指定，例如：
+结果是 `UNKNOWN` 时，日志里会自动列出页面上所有像尺码的元素及其状态
+（tag、disabled、pointer-events、class），照着那个列表调就行。
+`size '00S' not found on page` 说明标签写法变了，可以显式指定：
 
 ```bash
 python3 check_stock.py --size 00 --length Short
