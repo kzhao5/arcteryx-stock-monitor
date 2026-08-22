@@ -71,6 +71,13 @@ jobs:
             *) verdict="UNDETERMINED - detection needs attention" ;;
           esac
           echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+          # Also as a slug, so the artifact name carries the answer and the
+          # result is visible on the run page without opening the log.
+          case "$code" in
+            0) echo "slug=IN-STOCK" >> "$GITHUB_OUTPUT" ;;
+            1) echo "slug=out-of-stock" >> "$GITHUB_OUTPUT" ;;
+            *) echo "slug=UNDETERMINED" >> "$GITHUB_OUTPUT" ;;
+          esac
           if [ "$code" -le 1 ]; then exit 0; else exit "$code"; fi
 
       - name: Report the verdict
@@ -97,6 +104,6 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: pdp-screenshot
+          name: result-${{ steps.check.outputs.slug }}
           path: shot.png
           if-no-files-found: ignore
