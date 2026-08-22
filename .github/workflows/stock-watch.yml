@@ -1,9 +1,18 @@
 name: Arc'teryx stock watch
 
-# Public repo, so Actions minutes are free. Five minutes is the shortest
-# interval GitHub accepts; it also delays or drops scheduled runs under load,
-# more noticeably the tighter the schedule, so treat this as "about every five
-# minutes". The schedule is disabled entirely after 60 days with no commits.
+# */5 is the shortest interval GitHub accepts, but it is a REQUEST, not a
+# guarantee, and the gap between what is asked for and what arrives is large.
+# Measured on this repository: one scheduled run in the first fifty minutes.
+# GitHub delays and silently drops scheduled runs under load, and dense
+# schedules are dropped the most, so expect something closer to every 15-60
+# minutes, unevenly. Asking for */5 costs nothing, so it stays -- just do not
+# read it as a promise. A fast restock can be missed entirely between runs.
+#
+# The only way to get a true five minute cadence is a long-running job that
+# loops internally (check_stock.py --interval 300), which occupies a runner
+# around the clock. That was considered and deliberately not taken.
+#
+# GitHub also disables the schedule after 60 days with no commits, silently.
 on:
   workflow_dispatch:
     inputs:
